@@ -270,17 +270,21 @@ async def entrypoint(ctx: JobContext) -> None:
     orchestrator = ContextOrchestrator(moss, knowledge, live_api=LiveOperationalAPI())
 
     # --- Postgres persistence bootstrap ---
+    from app.db.base import get_session_maker
+    session_maker = get_session_maker()
+
     recorder = VoiceSessionRecorder(db)
     voice_session_row = await recorder.start_session(
         tenant_id=identity.tenant_id, user_id=identity.user_id, initial_language="en-IN",
     )
+    voice_session_id = voice_session_row.id
+    tenant_uuid = identity.tenant_id
+    user_uuid = identity.user_id
     await db.commit()
 
     tool_call_recorder = ToolCallRecorder(db)
     contract_executor = ContractToolExecutor(db, tool_call_recorder)
     ticket_service = InMemoryTicketService()
-
-    db_lock = asyncio.Lock()
 
     async def _persist_turn(event: ConversationItemAddedEvent) -> None:
         item = event.item
@@ -288,29 +292,35 @@ async def entrypoint(ctx: JobContext) -> None:
             return
         if item.role not in ("user", "assistant", "system"):
             return
-        async with db_lock:
-            try:
-                await recorder.record_turn(
-                    tenant_id=identity.tenant_id,
-                    session_id=voice_session_row.id,
+        try:
+            async with session_maker() as turn_db:
+                rec = VoiceSessionRecorder(turn_db)
+                await rec.record_turn(
+                    tenant_id=tenant_uuid,
+                    session_id=voice_session_id,
                     role=TurnRole(item.role),
                     text=item.text_content or "",
                     language=None,
                 )
-                await db.commit()
-            except Exception:
-                logger.exception("failed to persist conversation turn, continuing session")
-                await db.rollback()
+                await turn_db.commit()
+        except Exception:
+            logger.exception("failed to persist conversation turn, continuing session")
 
     async def _end_session_on_shutdown() -> None:
-        async with db_lock:
-            try:
-                await recorder.end_session(voice_session_row)
-                await db.commit()
-            except Exception:
-                logger.exception("failed to mark voice session as ended")
-            finally:
-                await db.close()
+        try:
+            async with session_maker() as end_db:
+                from sqlalchemy import update, func
+                from app.db.models import VoiceSession, VoiceSessionStatus
+                await end_db.execute(
+                    update(VoiceSession)
+                    .where(VoiceSession.id == voice_session_id)
+                    .values(status=VoiceSessionStatus.closed, ended_at=func.now())
+                )
+                await end_db.commit()
+        except Exception:
+            logger.exception("failed to mark voice session as ended")
+        finally:
+            await db.close()
 
     ctx.add_shutdown_callback(_end_session_on_shutdown)
 

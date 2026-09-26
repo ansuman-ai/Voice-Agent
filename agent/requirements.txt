@@ -15,4 +15,5 @@ asyncpg
 alembic
 fastapi
 pyjwt
+cryptography
 uvicorn
