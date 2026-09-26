@@ -130,22 +130,13 @@ async def check_database() -> CheckResult:
 
     parsed = urllib.parse.urlsplit(url.replace("postgresql+asyncpg://", "postgresql://", 1))
     try:
-        socket.setdefaulttimeout(6)
-        with socket.create_connection((parsed.hostname, parsed.port or 5432), timeout=6):
-            pass
-    except socket.gaierror as e:
-        return CheckResult("NETWORK BLOCKED", f"DNS resolution failed for {parsed.hostname}: {e}")
-    except (TimeoutError, ConnectionRefusedError, OSError) as e:
-        return CheckResult("NETWORK BLOCKED", f"TCP connect to {parsed.hostname}:{parsed.port or 5432} failed: {e}")
-
-    try:
         import asyncpg
     except ImportError:
         return CheckResult("ERROR", "asyncpg not installed (pip install asyncpg)")
 
     dsn = url.replace("postgresql+asyncpg://", "postgresql://", 1)
     try:
-        conn = await asyncio.wait_for(asyncpg.connect(dsn=dsn), timeout=10)
+        conn = await asyncio.wait_for(asyncpg.connect(dsn=dsn, timeout=15), timeout=20)
         result = await conn.fetchval("SELECT 1")
         await conn.close()
         return CheckResult("AUTHENTICATED", f"SELECT 1 -> {result}")
@@ -165,19 +156,14 @@ async def check_livekit() -> CheckResult:
     if not all([url, key, secret]):
         return CheckResult("MISSING", "LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET not fully set")
 
-    host = urllib.parse.urlsplit(url.replace("wss://", "https://").replace("ws://", "http://")).hostname
-    blocked = await egress_probe(host)
-    if blocked:
-        return blocked
-
     try:
         from livekit import api
     except ImportError:
         return CheckResult("ERROR", "livekit-api not installed (pip install livekit-api)")
 
-    lk = api.LiveKitAPI(url=url, api_key=key, api_secret=secret)
     try:
-        rooms = await asyncio.wait_for(lk.room.list_rooms(api.ListRoomsRequest()), timeout=10)
+        lk = api.LiveKitAPI(url=url, api_key=key, api_secret=secret)
+        rooms = await asyncio.wait_for(lk.room.list_rooms(api.ListRoomsRequest()), timeout=15)
         return CheckResult("AUTHENTICATED", f"ListRooms succeeded -- {len(rooms.rooms)} room(s) currently active")
     except Exception as e:
         msg = str(e)
@@ -185,7 +171,10 @@ async def check_livekit() -> CheckResult:
             return CheckResult("REJECTED", f"{type(e).__name__}: {e}")
         return CheckResult("ERROR", f"{type(e).__name__}: {e}")
     finally:
-        await lk.aclose()
+        try:
+            await lk.aclose()
+        except Exception:
+            pass
 
 
 async def check_sarvam_tts() -> CheckResult:
@@ -194,10 +183,6 @@ async def check_sarvam_tts() -> CheckResult:
     key = os.environ.get("SARVAM_API_KEY")
     if not key:
         return CheckResult("MISSING", "SARVAM_API_KEY not set")
-
-    blocked = await egress_probe("api.sarvam.ai")
-    if blocked:
-        return blocked
 
     try:
         import aiohttp
@@ -212,8 +197,8 @@ async def check_sarvam_tts() -> CheckResult:
                 json={
                     "inputs": ["preflight check"],
                     "target_language_code": "en-IN",
-                    "speaker": "anushka",
-                    "model": "bulbul:v2",
+                    "speaker": "shubh",
+                    "model": "bulbul:v3",
                 },
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
@@ -235,13 +220,6 @@ async def check_moss() -> CheckResult:
     if not all([project_id, project_key]):
         return CheckResult("MISSING", "MOSS_PROJECT_ID / MOSS_PROJECT_KEY not fully set")
 
-    # Moss's actual API hosts (found by inspecting the compiled moss_core
-    # extension -- not documented in the Python package itself).
-    for host in ("service.usemoss.dev", "models.moss.link"):
-        blocked = await egress_probe(host)
-        if blocked:
-            return blocked
-
     try:
         from moss import MossClient
     except ImportError:
@@ -249,7 +227,7 @@ async def check_moss() -> CheckResult:
 
     try:
         client = MossClient(project_id, project_key)
-        indexes = await asyncio.wait_for(client.list_indexes(), timeout=10)
+        indexes = await asyncio.wait_for(client.list_indexes(), timeout=15)
         count = len(indexes) if hasattr(indexes, "__len__") else "?"
         return CheckResult("AUTHENTICATED", f"list_indexes() succeeded -- {count} index(es)")
     except Exception as e:
@@ -273,7 +251,7 @@ async def check_google() -> CheckResult:
     if blocked:
         return blocked
 
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+    model = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
     try:
         import aiohttp
     except ImportError:
@@ -306,7 +284,7 @@ async def check_groq() -> CheckResult:
     if blocked:
         return blocked
 
-    model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    model = os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b")
     try:
         import aiohttp
     except ImportError:

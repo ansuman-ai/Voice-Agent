@@ -20,6 +20,9 @@ structurally incapable of running outside dev).
 """
 import logging
 import os
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 from fastapi import FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
