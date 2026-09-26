@@ -86,8 +86,7 @@ from app.tools.create_ticket import CREATE_TICKET_CONTRACT, build_create_ticket_
 from app.tools.definitions import build_tool_registry
 from app.tools.executor import ContractToolExecutor
 from app.tools.ticket_service import InMemoryTicketService
-from app.voice_providers.sarvam.stt import STT as SarvamSTT
-from livekit.plugins.sarvam import TTS as SarvamTTS
+from livekit.plugins.sarvam import STT as SarvamSTT, TTS as SarvamTTS
 
 logger = logging.getLogger("agent.entrypoint")
 
@@ -315,7 +314,7 @@ async def entrypoint(ctx: JobContext) -> None:
     llm_candidates = []
     groq_key = os.environ.get("GROQ_API_KEY")
     if groq_key:
-        groq_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+        groq_model = os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b")
         llm_candidates.append(
             openai.LLM(
                 model=groq_model,
@@ -326,10 +325,10 @@ async def entrypoint(ctx: JobContext) -> None:
         )
 
     google_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-    if google_key or not llm_candidates:
-        if google_key and "GOOGLE_API_KEY" not in os.environ:
+    if google_key:
+        if "GOOGLE_API_KEY" not in os.environ:
             os.environ["GOOGLE_API_KEY"] = google_key
-        gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+        gemini_model = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
         llm_candidates.append(google.LLM(model=gemini_model))
 
     if len(llm_candidates) > 1:
@@ -340,7 +339,7 @@ async def entrypoint(ctx: JobContext) -> None:
         raise RuntimeError("At least one of GROQ_API_KEY or GOOGLE_API_KEY must be provided")
 
     session: AgentSession = AgentSession(
-        stt=SarvamSTT(api_key=sarvam_key),
+        stt=SarvamSTT(api_key=sarvam_key, model="saaras:v3", language="en-IN"),
         llm=llm_plugin,
         tts=SarvamTTS(
             api_key=sarvam_key,
@@ -365,7 +364,8 @@ async def entrypoint(ctx: JobContext) -> None:
     )
 
     await session.generate_reply(
-        instructions="Greet the field worker and ask what they need help with."
+        user_input="Hello",
+        instructions="Greet the user warmly in Hindi and English, and ask how you can help them today.",
     )
 
 

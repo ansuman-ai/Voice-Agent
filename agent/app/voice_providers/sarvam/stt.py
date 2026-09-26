@@ -73,7 +73,7 @@ FINALIZE_TIMEOUT_SECS = 3.0
 
 
 class STT(stt.STT):
-    def __init__(self, *, api_key: str, model: str = "saarika:v2", mode: str | None = None):
+    def __init__(self, *, api_key: str, model: str = "saaras:v3", mode: str | None = None):
         super().__init__(
             capabilities=stt.STTCapabilities(
                 streaming=True,
