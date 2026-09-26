@@ -32,6 +32,7 @@ interface AppShellProps {
   onToggleMute: () => void;
   signInSlot: ReactNode;
   showSignIn: boolean;
+  isAuthenticating?: boolean;
 }
 
 type PanelTab = "transcript" | "events";
@@ -58,6 +59,7 @@ export function AppShell({
   onToggleMute,
   signInSlot,
   showSignIn,
+  isAuthenticating,
 }: AppShellProps) {
   const [activeTab, setActiveTab] = useState<PanelTab>("transcript");
   const isConnected = connectionPhase === "connected";
@@ -114,6 +116,7 @@ export function AppShell({
             <VoiceControls
               connectionPhase={connectionPhase}
               micPhase={micPhase}
+              isAuthenticating={isAuthenticating}
               onConnect={onConnect}
               onDisconnect={onDisconnect}
               onStartMic={onStartMic}

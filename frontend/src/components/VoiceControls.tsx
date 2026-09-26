@@ -3,6 +3,7 @@ import type { MicPhase, SessionPhase } from "../types/livekit";
 interface VoiceControlsProps {
   connectionPhase: SessionPhase;
   micPhase: MicPhase;
+  isAuthenticating?: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
   onStartMic: () => void;
@@ -55,6 +56,7 @@ function MicOffIcon() {
 export function VoiceControls({
   connectionPhase,
   micPhase,
+  isAuthenticating = false,
   onConnect,
   onDisconnect,
   onStartMic,
@@ -62,7 +64,7 @@ export function VoiceControls({
   onToggleMute,
 }: VoiceControlsProps) {
   const isConnected = connectionPhase === "connected";
-  const isConnecting = connectionPhase === "connecting";
+  const isConnecting = connectionPhase === "connecting" || isAuthenticating;
   const isDisconnecting = connectionPhase === "disconnecting";
   const isBusy = isConnecting || isDisconnecting;
   const canConnect = (connectionPhase === "ready_to_connect" || connectionPhase === "error") && !isBusy;

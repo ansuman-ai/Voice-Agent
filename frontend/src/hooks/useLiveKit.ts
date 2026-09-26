@@ -68,6 +68,19 @@ export function useLiveKit() {
         return;
       }
 
+      // Tear down any existing room connection and audio elements to prevent duplicate sessions
+      if (roomRef.current) {
+        try {
+          await roomRef.current.disconnect();
+        } catch {
+          // ignore
+        }
+        roomRef.current = null;
+      }
+      document.querySelectorAll('[data-livekit-agent-audio="true"]').forEach((el) => {
+        el.remove();
+      });
+
       setConnectionPhase("connecting");
       const room = new Room(DEFAULT_ROOM_OPTIONS);
       roomRef.current = room;
